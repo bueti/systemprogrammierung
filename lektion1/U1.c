@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 
     for (i=0; i<100; i++) {
         char *text = (void *) power_of(i);
-        n = strlen(text) + 1;
+        n = strlen(text) ;
         printf("length=%d\n", n);
         m = write(fdout, text, n);
     }
