@@ -32,6 +32,7 @@ int main(int argc, char *argv[]) {
     for (i=99; i>0; i--) {
         char *text = (void *) power_of(i);
         n = strlen(text);
+        lseek( fdout, i*5, 0);
         m = write(fdout, text, n);
     }
 
