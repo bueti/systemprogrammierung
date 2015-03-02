@@ -8,11 +8,6 @@
 
 #define BUFFSIZE    4096
 
-typedef struct ConstBuffData {
-    const char *ptr;
-    size_t len;
-} ConstBuffData;
-
 void signal_callback_handler(int signum) {
     printf("Caught signal %d\n",signum);
     exit(signum);
@@ -86,20 +81,18 @@ int main(int argc, const char *argv[]) {
         handle_input(wait_for_input());
     } else {
         // handle stdin
-        if (!strcmp(argv[1], "-")) {
-        //    while(1) {
-                char c;
-                //int b = read(STDIN_FILENO, &c, BUFFSIZE);
-                while (EOF != (c = fgetc(STDIN_FILENO))) {
-                    printf("%c", c);
-                    wait_for_input();
-                }
-                //if (b < 1) {
-                //    printf("nothing read\n");
-                //}
-                //printf("%c", c);
-                //fflush(stdout);
-         //   }
+        printf("reading from STDIN_FILENO doesnt properly work.\n");
+        exit(0);
+        while(1) {
+            char c;
+            int b = read(STDIN_FILENO, &c, BUFFSIZE);
+            if (b < 1) {
+                printf("nothing read\n");
+            }
+            printf("%c", c);
+            fflush(stdout);
+            wait_for_input();
+            fflush(stdout);
         }
     }
 
