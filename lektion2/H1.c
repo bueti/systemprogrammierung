@@ -3,8 +3,6 @@
 #include <unistd.h>
 #include <termios.h>
 #include <fcntl.h>
-#include <string.h>
-#include <signal.h>
 
 #define BUFFSIZE    4096
 
@@ -12,7 +10,6 @@ void signal_callback_handler(int signum) {
     printf("Caught signal %d\n",signum);
     exit(signum);
 }
-
 
 int wait_for_input() {
     int view = 1;
