@@ -16,7 +16,7 @@
 
 #define PERM 0600
 #define BUF_SIZE 16384
-#define ALPHA_SIZE 256
+#define ALPHA_SIZE 65536
 #define PROCESS_EXIT -1
 #define NO_EXIT -1
 
