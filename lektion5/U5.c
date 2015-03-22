@@ -97,7 +97,6 @@ int main(int argc, char *argv[]) {
     if (argc > 2) {
         printf("Usage\n\n");
         printf("%s -c\ncleanup ipc\n\n", argv[0]);
-        printf("%s -s\nsetup ipc\n\n", argv[0]);
         printf("%s < inputfile\ncout file, show accumulated output\n\n", argv[0]);
         printf("%s name < inputfile\ncout file, show output with name\n\n", argv[0]);
         exit(1);
