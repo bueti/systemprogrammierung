@@ -5,75 +5,149 @@
  * License: GPL v2 (See https://de.wikipedia.org/wiki/GNU_General_Public_License )
  */
 
-/* use mutex for IPC, but do preparation separately */
-
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/sem.h>
-#include <sys/shm.h>
-#include <sys/msg.h>
-#include <sys/wait.h>
 #include <errno.h>
-#include <unistd.h>
-#include <signal.h>
-#include <time.h>
+#include <fcntl.h>
 #include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/msg.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 
 #define BUF_SIZE 16384
 
-pthread_mutex_t mutex;
+#define ALPHA_SIZE 256
+#define SEM_SIZE 128
 
-void *run(void *arg) {
-    int retcode;
-    char buffer[BUF_SIZE];
+struct data {
+  long counter[ALPHA_SIZE];
+};
 
-    int *argi = (int *) arg;
-    int my_tidx = *argi;
+const int SIZE = sizeof(struct data);
 
-    retcode = pthread_mutex_lock(&mutex);
-    // handle_thread_error(retcode, "child failed (timed)lock", PROCESS_EXIT);
-    printf("%d: in blocking thread: got mutex\n", my_tidx);
+static pthread_mutex_t output_mutex;
 
-    char line[1025];
-    printf("%s", fgets(line, 1024, stdin));
+static struct data data;
 
-    printf("%d: in blocking thread: releasing mutex\n", my_tidx);
-    pthread_mutex_unlock(&mutex);
-    printf("%d: in blocking thread: released mutex\n", my_tidx);
-    printf("%d: in blocking thread: exiting\n", my_tidx);
-    return NULL;
+/* thread function */
+void *run(void *raw_name) {
+  // int retcode;
+  time_t thread_start = time(NULL);
+  char *name = (char *) raw_name;
+
+  int fd = -1;
+  time_t open_start = time(NULL);
+  while (fd == -1) {
+    fd = open(raw_name, O_RDONLY);
+    if (fd < 0 && errno == EMFILE) {
+      sleep(1);
+      continue;
+    }
+    if (fd < 0) {
+      char msg[256];
+      sprintf(msg, "error while opening file=%s", name);
+    }
+  }
+  time_t open_duration = time(NULL) - open_start;
+
+  time_t total_mutex_wait = 0;
+  char buffer[BUF_SIZE];
+  struct data local_data;
+  long *scounter = local_data.counter;
+  while (1) {
+    ssize_t size_read = read(fd, buffer, BUF_SIZE);
+    if (size_read == 0) {
+      /* end of file */
+      break;
+    }
+    if (size_read < 0) {
+      char msg[256];
+      sprintf(msg, "error while reading file=%s", name);
+    }
+    int i;
+    for (i = 0; i < size_read; i++) {
+      unsigned char c = buffer[i];
+      scounter[c]++;
+    }
+  }
+  close(fd);
+
+  time_t thread_duration = time(NULL) - thread_start;
+
+  unsigned int i;
+
+  long *tcounter = data.counter;
+
+  pthread_mutex_lock(&output_mutex);
+  printf("------------------------------------------------------------\n");
+  printf("%s: pid=%ld\n", name, (long) getpid());
+  printf("open duration: ~ %ld sec; total wait for data: ~ %ld sec; thread duration: ~ %ld\n", (long) open_duration, (long) total_mutex_wait, (long) thread_duration);
+  printf("------------------------------------------------------------\n");
+  for (i = 0; i < ALPHA_SIZE; i++) {
+
+    tcounter[i] += scounter[i];
+    long val = tcounter[i];
+
+    if (! (i & 007)) {
+      printf("\n");
+    }
+    if ((i & 0177) < 32 || i == 127) {
+      printf("\\%03o: %10ld    ", i, val);
+    } else {
+      printf("%4c: %10ld    ", (char) i, val);
+    }
+  }
+  printf("\n\n");
+  printf("------------------------------------------------------------\n\n");
+  fflush(stdout);
+  pthread_mutex_unlock(&output_mutex);
+  return NULL;
 }
+
 
 int main(int argc, char *argv[]) {
 
-    int retcode;
+  if (argc < 2) {
+    printf("Usage\n\n");
+    printf("%s file1 file2 file3 ... filen\ncount files, show accumulated output after having completed one file\n\n", argv[0]);
+    exit(1);
+  }
 
-    size_t N_THREADS = argc - 1;
+  time_t start_time = time(NULL);
+  int retcode = 0;
+  int i;
 
-    printf("in parent: setting up %ld threads\n", N_THREADS);
+  printf("%d files will be read\n", argc-1);
+  fflush(stdout);
 
-    pthread_t thread[N_THREADS];
+  for (i = 0; i < ALPHA_SIZE; i++) {
+    data.counter[i] = 0L;
+  }
 
-    int tidx[N_THREADS];
-    for (size_t i = 0; i < N_THREADS; i++) {
-        tidx[i] = (int) i;
-        retcode = pthread_create(thread + i, NULL, run, (void *) (tidx + i));
-    }
+  retcode = pthread_mutex_init(&output_mutex, NULL);
 
-    pthread_mutex_init(&mutex, NULL);
-    sleep(2);
+  pthread_t *threads = malloc((argc-1)*sizeof(pthread_t));
+  for (i = 1; i < argc; i++) {
+    retcode = pthread_create(&(threads[i-1]), NULL, run, argv[i]);
+  }
+  pthread_mutex_lock(&output_mutex);
+  printf("%d threads started\n", argc-1);
+  fflush(stdout);
+  pthread_mutex_unlock(&output_mutex);
+  for (i = 0; i < argc-1; i++) {
+    retcode = pthread_join(threads[i], NULL);
+  }
+  retcode = pthread_mutex_destroy(&output_mutex);
 
-    printf("in parent: waiting for threads to finish\n");
-    for (size_t i = 0; i < N_THREADS; i++) {
-        retcode = pthread_join(thread[i], NULL);
-        //handle_thread_error(retcode, "join failed", PROCESS_EXIT);
-        printf("joined thread %d\n", (int) i);
-    }
-    pthread_mutex_destroy(&mutex);
-    printf("done\n");
-    exit(0);
+  time_t total_time = time(NULL) - start_time;
+  printf("total %ld sec\n", (long) total_time);
+  printf("done\n");
+  exit(0);
 }
+
 
